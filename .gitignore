@@ -1,0 +1,16 @@
+# Ignore binaries
+messaging
+
+# Ignore compiled object and archive files
+*.[oa]
+
+# Ignore files generates by Legion
+legion_defines.h
+realm_defines.h
+
+# Ignore IDE files
+.vscode/
+.mypy_cache/
+
+# Include log files
+log/

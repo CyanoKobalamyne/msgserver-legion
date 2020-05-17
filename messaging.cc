@@ -392,7 +392,15 @@ PrepareFetchResponse prepare_fetch_task(
     Runtime *runtime) {
     PrepareFetchData *data = (PrepareFetchData *)task->args;
     PrepareFetchResponse response;
-    // TOFO: perform task.
+    const FieldAccessor<READ_ONLY, channel_id_t *, 1> next_unread(
+        regions[0], NEXT_UNREAD_MSG_IDS);
+    for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
+        response.next_unread_msg_ids[i] = next_unread[data->user_id][i];
+        const FieldAccessor<READ_ONLY, channel_id_t, 1> next_msg(
+            regions[1 + i], NEXT_UNREAD_MSG_IDS);
+        response.next_channel_msg_ids[i] =
+            next_msg[data->watched_channel_ids[i]];
+    }
     return response;
 }
 
@@ -410,7 +418,9 @@ PreparePostResponse prepare_post_task(
     Runtime *runtime) {
     PreparePostData *data = (PreparePostData *)task->args;
     PreparePostResponse response;
-    // TOFO: perform task.
+    FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(regions[0],
+                                                       NEXT_MSG_ID);
+    response.next_channel_msg_id = next_msg[data->channel_id];
     return response;
 }
 

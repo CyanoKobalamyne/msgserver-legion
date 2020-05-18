@@ -561,12 +561,13 @@ ExecutePostResponse execute_post_task(
     if (next_msg[data->channel_id] != data->next_channel_msg_id) {
         return {.success = false};
     }
-    FieldAccessor<WRITE_DISCARD, user_id_t, 1> author(regions[1], AUTHOR_ID);
-    author[data->next_channel_msg_id] = data->message.author_id;
-    FieldAccessor<WRITE_DISCARD, time_t, 1> timestamp(regions[1], TIMESTAMP);
-    timestamp[data->next_channel_msg_id] = data->message.timestamp;
-    FieldAccessor<WRITE_DISCARD, MessageText, 1> text(regions[1], TEXT);
-    text[data->next_channel_msg_id] = data->message.text;
+    Point<2> msg_id(data->channel_id, data->next_channel_msg_id);
+    FieldAccessor<WRITE_DISCARD, user_id_t, 2> author(regions[1], AUTHOR_ID);
+    author[msg_id] = data->message.author_id;
+    FieldAccessor<WRITE_DISCARD, time_t, 2> timestamp(regions[1], TIMESTAMP);
+    timestamp[msg_id] = data->message.timestamp;
+    FieldAccessor<WRITE_DISCARD, MessageText, 2> text(regions[1], TEXT);
+    text[msg_id] = data->message.text;
     next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
     return {.success = true};
 }

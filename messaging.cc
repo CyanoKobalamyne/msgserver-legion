@@ -408,8 +408,31 @@ ExecuteFetchResponse execute_fetch_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
-    ExecuteFetchResponse response;
-    // TOFO: perform task.
+    const FieldAccessor<READ_ONLY, channel_id_t *, 1> next_unread(
+        regions[0], NEXT_UNREAD_MSG_IDS);
+    for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
+        if (data->next_unread_msg_ids[i] != next_unread[data->user_id][i]) {
+            return {.success = false};
+        }
+    }
+    ExecuteFetchResponse response = {.success = true};
+    unsigned long long index = 0;
+    for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
+        for (message_id_t j = data->next_unread_msg_ids[i];
+             j < data->next_channel_msg_ids[i]; j++, index++) {
+            FieldAccessor<READ_ONLY, user_id_t, 1> author(regions[index],
+                                                          AUTHOR_ID);
+            FieldAccessor<READ_ONLY, time_t, 1> timestamp(regions[index],
+                                                          TIMESTAMP);
+            FieldAccessor<READ_ONLY, char[MESSAGE_LENGTH], 1> text(
+                regions[index], TEXT);
+            response.messages[index] = {.message_id = j,
+                                        .author_id = author[j],
+                                        .timestamp = timestamp[j],
+                                        .text = text[j]};
+        }
+    }
+    response.num_messages = index;
     return response;
 }
 

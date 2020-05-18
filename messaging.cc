@@ -67,7 +67,7 @@ private:
     T array[CHANNELS_PER_USER];
 
 public:
-    operator[](size_t n) { return array[n]; }
+    T &operator[](size_t n) { return array[n]; }
 };
 
 typedef struct {

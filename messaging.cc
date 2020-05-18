@@ -397,9 +397,9 @@ void dispatch_task(const Task *task,
                             Point<2>(req.request.channel_id,
                                      response.next_channel_msg_id)),
                         WRITE_DISCARD, EXCLUSIVE, messages));
-                    launcher.add_field(0, AUTHOR_ID);
-                    launcher.add_field(0, TIMESTAMP);
-                    launcher.add_field(0, TEXT);
+                    launcher.add_field(1, AUTHOR_ID);
+                    launcher.add_field(1, TIMESTAMP);
+                    launcher.add_field(1, TEXT);
                     executing_reqs.push_back(
                         {.future = runtime->execute_task(ctx, launcher),
                          .request = req.request});

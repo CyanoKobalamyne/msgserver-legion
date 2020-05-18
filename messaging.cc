@@ -489,14 +489,14 @@ PrepareFetchResponse prepare_fetch_task(
     Runtime *runtime) {
     PrepareFetchData *data = (PrepareFetchData *)task->args;
     PrepareFetchResponse response;
-    const FieldAccessor<READ_ONLY, PerUserChannel<channel_id_t>, 1>
+    const FieldAccessor<READ_ONLY, PerUserChannel<message_id_t>, 1>
         next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
     memcpy(response.next_unread_msg_ids,
-           ((PerUserChannel<channel_id_t>)next_unread[data->user_id]),
+           ((PerUserChannel<message_id_t>)next_unread[data->user_id]),
            sizeof response.next_unread_msg_ids);
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-        const FieldAccessor<READ_ONLY, channel_id_t, 1> next_msg(
-            regions[1 + i], NEXT_UNREAD_MSG_IDS);
+        const FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(
+            regions[1 + i], NEXT_MSG_ID);
         response.next_channel_msg_ids[i] =
             next_msg[data->watched_channel_ids[i]];
     }

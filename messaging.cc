@@ -38,11 +38,24 @@ typedef uint16_t user_id_t;
 typedef uint8_t channel_id_t;
 typedef uint32_t message_id_t;
 
+class MessageText {
+private:
+    char buffer[MESSAGE_LENGTH];
+
+public:
+    operator void *() { return buffer; }
+    char &operator[](size_t n) { return buffer[n]; }
+    MessageText &operator=(MessageText text) {
+        memcpy(buffer, text, sizeof buffer);
+        return *this;
+    }
+};
+
 typedef struct {
     message_id_t message_id;
     user_id_t author_id;
     time_t timestamp;
-    char text[MESSAGE_LENGTH];
+    MessageText text;
 } Message;
 
 typedef struct {
@@ -95,7 +108,7 @@ typedef struct {
     Action action;
     user_id_t user_id;
     channel_id_t channel_id;
-    char message[MESSAGE_LENGTH];
+    MessageText message;
 } Request;
 
 typedef struct {
@@ -424,8 +437,8 @@ ExecuteFetchResponse execute_fetch_task(
                                                           AUTHOR_ID);
             FieldAccessor<READ_ONLY, time_t, 1> timestamp(regions[index],
                                                           TIMESTAMP);
-            FieldAccessor<READ_ONLY, char[MESSAGE_LENGTH], 1> text(
-                regions[index], TEXT);
+            FieldAccessor<READ_ONLY, MessageText, 1> text(regions[index],
+                                                          TEXT);
             response.messages[index] = {.message_id = j,
                                         .author_id = author[j],
                                         .timestamp = timestamp[j],
@@ -461,8 +474,7 @@ ExecutePostResponse execute_post_task(
     author[data->next_channel_msg_id] = data->message.author_id;
     FieldAccessor<WRITE_DISCARD, time_t, 1> timestamp(regions[1], TIMESTAMP);
     timestamp[data->next_channel_msg_id] = data->message.timestamp;
-    FieldAccessor<WRITE_DISCARD, char[MESSAGE_LENGTH], 1> text(regions[1],
-                                                               TEXT);
+    FieldAccessor<WRITE_DISCARD, MessageText, 1> text(regions[1], TEXT);
     text[data->next_channel_msg_id] = data->message.text;
     next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
     return {.success = true};

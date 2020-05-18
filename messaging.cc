@@ -164,10 +164,10 @@ void dispatch_task(const Task *task,
                    const std::vector<PhysicalRegion> &regions, Context ctx,
                    Runtime *runtime) {
     const InputArgs &args = Runtime::get_input_args();
-    unsigned int user_count = 0;
-    unsigned int channel_count = 0;
-    unsigned int msg_count = 0;
-    unsigned int n_requests = 0;
+    user_id_t user_count = 0;
+    channel_id_t channel_count = 0;
+    message_id_t msg_count = 0;
+    unsigned long n_requests = 0;
     unsigned int request_ratio = 1;
 
     int opt;
@@ -185,7 +185,7 @@ void dispatch_task(const Task *task,
             msg_count = atoi(optarg);
             break;
         case 't':
-            n_requests = atoi(optarg);
+            n_requests = atol(optarg);
             break;
         case 'r':
             request_ratio = atoi(optarg);
@@ -301,8 +301,9 @@ void dispatch_task(const Task *task,
     std::deque<Request> requests(n_requests);
     unsigned int n_post_requests = n_requests / (request_ratio + 1);
     unsigned int n_fetch_requests = n_post_requests * request_ratio;
-    auto random_user_id =
-        std::bind(std::uniform_int_distribution(0U, user_count - 1), rng);
+    auto random_user_id = std::bind(
+        std::uniform_int_distribution(user_id_t(0), user_id_t(user_count - 1)),
+        rng);
     for (unsigned int i = 0; i < n_fetch_requests; i++) {
         requests.push_back({.action = FETCH, .user_id = random_user_id()});
     }

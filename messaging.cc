@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstring>
 #include <ctime>
 #include <deque>
@@ -320,8 +321,9 @@ void dispatch_task(const Task *task,
 
     /* Execute requests. */
     std::list<PendingRequest> pending_reqs;
-    std::vector<Future> executing_reqs;
-    long time = 0;
+    std::vector<PendingRequest> executing_reqs;
+    auto start = std::chrono::high_resolution_clock::now();
+    time_t time = 0;
     while (requests.size() != 0 && pending_reqs.size() != 0) {
         for (auto it = pending_reqs.begin(); it != pending_reqs.end(); it++) {
             auto &req = *it;
@@ -361,7 +363,8 @@ void dispatch_task(const Task *task,
                         }
                     }
                     executing_reqs.push_back(
-                        runtime->execute_task(ctx, launcher));
+                        {.future = runtime->execute_task(ctx, launcher),
+                         .request = req.request});
                     break;
                 }
                 case POST: {
@@ -397,7 +400,8 @@ void dispatch_task(const Task *task,
                     launcher.add_field(0, TIMESTAMP);
                     launcher.add_field(0, TEXT);
                     executing_reqs.push_back(
-                        runtime->execute_task(ctx, launcher));
+                        {.future = runtime->execute_task(ctx, launcher),
+                         .request = req.request});
                     break;
                 }
                 }
@@ -451,7 +455,28 @@ void dispatch_task(const Task *task,
         }
         }
         requests.pop_front();
+        time++;
     }
+    // Wait for all tasks to complete.
+    for (auto req : executing_reqs) {
+        switch (req.request.action) {
+        case FETCH:
+            req.future.get_result<ExecuteFetchResponse>();
+            break;
+
+        case POST:
+            req.future.get_result<ExecutePostResponse>();
+            break;
+        }
+    }
+
+    auto stop = std::chrono::high_resolution_clock::now();
+
+    auto duration =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+    std::cout << duration.count() << std::endl;
+
+    return;
 }
 
 PrepareFetchResponse prepare_fetch_task(

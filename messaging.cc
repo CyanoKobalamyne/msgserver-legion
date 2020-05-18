@@ -63,11 +63,17 @@ public:
 };
 
 template <typename T>
-class ChannelArray {
+class PerUserChannel {
 private:
     T array[CHANNELS_PER_USER];
 
 public:
+    PerUserChannel() {
+        for (size_t i = 0; i < sizeof array; i++) array[i] = T();
+    }
+    PerUserChannel(T src[]) { memcpy(array, src, sizeof array); }
+
+    operator void *() { return array; }
     T &operator[](size_t n) { return array[n]; }
 };
 
@@ -88,19 +94,19 @@ public:
 
 typedef struct {
     user_id_t user_id;
-    channel_id_t watched_channel_ids[CHANNELS_PER_USER];
+    PerUserChannel<channel_id_t> watched_channel_ids;
 } PrepareFetchData;
 
 typedef struct {
-    message_id_t next_unread_msg_ids[CHANNELS_PER_USER];
-    message_id_t next_channel_msg_ids[CHANNELS_PER_USER];
+    PerUserChannel<message_id_t> next_unread_msg_ids;
+    PerUserChannel<message_id_t> next_channel_msg_ids;
 } PrepareFetchResponse;
 
 typedef struct {
     user_id_t user_id;
-    channel_id_t watched_channel_ids[CHANNELS_PER_USER];
-    message_id_t next_unread_msg_ids[CHANNELS_PER_USER];
-    message_id_t next_channel_msg_ids[CHANNELS_PER_USER];
+    PerUserChannel<channel_id_t> watched_channel_ids;
+    PerUserChannel<message_id_t> next_unread_msg_ids;
+    PerUserChannel<message_id_t> next_channel_msg_ids;
 } ExecuteFetchData;
 
 typedef struct {
@@ -217,15 +223,14 @@ void dispatch_task(const Task *task,
     user_init_req.add_field(FOLLOWED_CHANNEL_IDS);
     InlineLauncher user_init_launcher(user_init_req);
     PhysicalRegion init_region = runtime->map_region(ctx, user_init_launcher);
-    const FieldAccessor<WRITE_DISCARD, channel_id_t *, 1> channel_id_mem(
-        init_region, FOLLOWED_CHANNEL_IDS);
-    std::vector<int> all_channel_ids(channel_count);
+    const FieldAccessor<WRITE_DISCARD, PerUserChannel<channel_id_t>, 1>
+        channel_id_mem(init_region, FOLLOWED_CHANNEL_IDS);
+    std::vector<channel_id_t> all_channel_ids(channel_count);
     std::iota(all_channel_ids.begin(), all_channel_ids.end(), 0);
     for (PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
         std::shuffle(all_channel_ids.begin(), all_channel_ids.end(), rng);
-        for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-            channel_id_mem[*iter][i] = all_channel_ids[i];
-        }
+        channel_id_mem[*iter] =
+            PerUserChannel<channel_id_t>(&all_channel_ids[0]);
     }
     // Leave this region mapped.
 
@@ -244,12 +249,10 @@ void dispatch_task(const Task *task,
     next_unread_init_req.add_field(NEXT_UNREAD_MSG_IDS);
     InlineLauncher next_unread_init_launcher(next_unread_init_req);
     init_region = runtime->map_region(ctx, next_unread_init_launcher);
-    const FieldAccessor<WRITE_DISCARD, message_id_t *, 1> next_unread_mem(
-        init_region, NEXT_UNREAD_MSG_IDS);
+    const FieldAccessor<WRITE_DISCARD, PerUserChannel<message_id_t>, 1>
+        next_unread_mem(init_region, NEXT_UNREAD_MSG_IDS);
     for (PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
-        for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-            next_unread_mem[*iter][i] = 0;
-        }
+        next_unread_mem[*iter] = PerUserChannel<message_id_t>();
     }
     runtime->unmap_region(ctx, init_region);
 
@@ -306,7 +309,9 @@ void dispatch_task(const Task *task,
         std::uniform_int_distribution(0U, CHANNELS_PER_USER - 1), rng);
     for (unsigned int i = 0; i < n_post_requests; i++) {
         Request req = {.action = POST, .user_id = random_user_id()};
-        req.channel_id = channel_id_mem[req.user_id][random_watched_ix()];
+        req.channel_id =
+            ((PerUserChannel<channel_id_t>)
+                 channel_id_mem[req.user_id])[random_watched_ix()];
         snprintf(req.message, MESSAGE_LENGTH, msg_template, req.user_id,
                  req.channel_id);
         requests.push_back(req);
@@ -328,7 +333,8 @@ void dispatch_task(const Task *task,
                     pending_reqs.erase(it);
                     ExecuteFetchData data = {.user_id = req.request.user_id};
                     memcpy(data.watched_channel_ids,
-                           channel_id_mem[req.request.user_id],
+                           (PerUserChannel<channel_id_t>)
+                               channel_id_mem[req.request.user_id],
                            sizeof data.watched_channel_ids);
                     memcpy(data.next_channel_msg_ids,
                            response.next_channel_msg_ids,
@@ -403,7 +409,9 @@ void dispatch_task(const Task *task,
         switch (request.action) {
         case FETCH: {
             PrepareFetchData data = {.user_id = request.user_id};
-            memcpy(data.watched_channel_ids, channel_id_mem[request.user_id],
+            PerUserChannel<channel_id_t> watched_channel_ids =
+                channel_id_mem[request.user_id];
+            memcpy(data.watched_channel_ids, watched_channel_ids,
                    sizeof data.watched_channel_ids);
             TaskLauncher launcher(
                 PREPARE_FETCH_TASK,
@@ -416,7 +424,7 @@ void dispatch_task(const Task *task,
             for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
                 launcher.add_region_requirement(RegionRequirement(
                     runtime->get_logical_subregion_by_color(
-                        channel_partition, channel_id_mem[request.user_id][i]),
+                        channel_partition, watched_channel_ids[i]),
                     READ_ONLY, EXCLUSIVE, channels));
                 launcher.add_field(0, NEXT_MSG_ID);
             }
@@ -451,10 +459,12 @@ PrepareFetchResponse prepare_fetch_task(
     Runtime *runtime) {
     PrepareFetchData *data = (PrepareFetchData *)task->args;
     PrepareFetchResponse response;
-    const FieldAccessor<READ_ONLY, channel_id_t *, 1> next_unread(
-        regions[0], NEXT_UNREAD_MSG_IDS);
+    const FieldAccessor<READ_ONLY, PerUserChannel<channel_id_t>, 1>
+        next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
+    memcpy(response.next_unread_msg_ids,
+           ((PerUserChannel<channel_id_t>)next_unread[data->user_id]),
+           sizeof response.next_unread_msg_ids);
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-        response.next_unread_msg_ids[i] = next_unread[data->user_id][i];
         const FieldAccessor<READ_ONLY, channel_id_t, 1> next_msg(
             regions[1 + i], NEXT_UNREAD_MSG_IDS);
         response.next_channel_msg_ids[i] =
@@ -467,10 +477,11 @@ ExecuteFetchResponse execute_fetch_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
-    const FieldAccessor<READ_WRITE, channel_id_t *, 1> next_unread(
-        regions[0], NEXT_UNREAD_MSG_IDS);
+    const FieldAccessor<READ_WRITE, PerUserChannel<channel_id_t>, 1>
+        next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
+    PerUserChannel<channel_id_t> user_next_unread = next_unread[data->user_id];
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-        if (data->next_unread_msg_ids[i] != next_unread[data->user_id][i]) {
+        if (data->next_unread_msg_ids[i] != user_next_unread[i]) {
             return {.success = false};
         }
     }
@@ -493,8 +504,9 @@ ExecuteFetchResponse execute_fetch_task(
                                         .timestamp = timestamp[j],
                                         .text = text[j]};
         }
-        next_unread[data->user_id][i] = max_msg_id;
+        user_next_unread[i] = max_msg_id;
     }
+    next_unread[data->user_id] = user_next_unread;  // Overwrite values.
     response.num_messages = index;
     return response;
 }

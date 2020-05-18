@@ -506,9 +506,9 @@ ExecuteFetchResponse execute_fetch_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
-    const FieldAccessor<READ_WRITE, PerUserChannel<channel_id_t>, 1>
+    const FieldAccessor<READ_WRITE, PerUserChannel<message_id_t>, 1>
         next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
-    PerUserChannel<channel_id_t> user_next_unread = next_unread[data->user_id];
+    PerUserChannel<message_id_t> user_next_unread = next_unread[data->user_id];
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
         if (data->next_unread_msg_ids[i] != user_next_unread[i]) {
             return {.success = false};

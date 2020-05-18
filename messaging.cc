@@ -333,7 +333,6 @@ void dispatch_task(const Task *task,
                 case FETCH: {
                     PrepareFetchResponse response =
                         req.future.get_result<PrepareFetchResponse>();
-                    pending_reqs.erase(it);
                     ExecuteFetchData data = {.user_id = req.request.user_id};
                     memcpy(data.watched_channel_ids,
                            (PerUserChannel<channel_id_t>)
@@ -372,7 +371,6 @@ void dispatch_task(const Task *task,
                 case POST: {
                     PreparePostResponse response =
                         req.future.get_result<PreparePostResponse>();
-                    pending_reqs.erase(it);
                     Message msg = {
                         .message_id = response.next_channel_msg_id,
                         .author_id = req.request.user_id,
@@ -407,6 +405,7 @@ void dispatch_task(const Task *task,
                     break;
                 }
                 }
+                pending_reqs.erase(it);
                 break;
             }
         }

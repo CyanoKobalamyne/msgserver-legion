@@ -11,7 +11,8 @@ OUTFILE		?= messaging
 GEN_SRC		?= $(OUTFILE).cc
 
 # Set compilation flags
-CC_FLAGS	?=	-std=c++17
+CC_FLAGS	+=	-std=c++17						# Use C++17 standard for better template type deduction.
+CC_FLAGS	+=	-DLEGION_MAX_RETURN_SIZE=8192	# Increase maximum return size from 2048.
 
 # Include Legion's Makefile
 include $(LG_RT_DIR)/runtime.mk

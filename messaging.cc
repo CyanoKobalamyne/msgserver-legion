@@ -37,6 +37,7 @@ enum MessageFieldID {
 
 constexpr unsigned int CHANNELS_PER_USER = 5;
 constexpr unsigned int MESSAGE_LENGTH = 256;
+constexpr unsigned int MAX_RETURNED_MESSAGES = 20;
 constexpr char msg_template[] = "This is a message from user %d on channel %d";
 
 typedef uint16_t user_id_t;
@@ -77,6 +78,14 @@ typedef struct {
     MessageText text;
 } Message;
 
+class MessageList {
+private:
+    Message msgs[MAX_RETURNED_MESSAGES];
+
+public:
+    Message &operator[](size_t n) { return msgs[n]; }
+};
+
 typedef struct {
     user_id_t user_id;
     channel_id_t watched_channel_ids[CHANNELS_PER_USER];
@@ -97,7 +106,7 @@ typedef struct {
 typedef struct {
     bool success;
     message_id_t num_messages;
-    Message messages[];
+    MessageList messages;
 } ExecuteFetchResponse;
 
 typedef struct {
@@ -468,8 +477,11 @@ ExecuteFetchResponse execute_fetch_task(
     ExecuteFetchResponse response = {.success = true};
     unsigned long long index = 0;
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-        for (message_id_t j = data->next_unread_msg_ids[i];
-             j < data->next_channel_msg_ids[i]; j++, index++) {
+        message_id_t max_msg_id =
+            std::min(data->next_channel_msg_ids[i],
+                     data->next_unread_msg_ids[i] + MAX_RETURNED_MESSAGES);
+        for (message_id_t j = data->next_unread_msg_ids[i]; j < max_msg_id;
+             j++, index++) {
             FieldAccessor<READ_ONLY, user_id_t, 1> author(regions[index],
                                                           AUTHOR_ID);
             FieldAccessor<READ_ONLY, time_t, 1> timestamp(regions[index],
@@ -481,7 +493,7 @@ ExecuteFetchResponse execute_fetch_task(
                                         .timestamp = timestamp[j],
                                         .text = text[j]};
         }
-        next_unread[data->user_id][i] = data->next_channel_msg_ids[i];
+        next_unread[data->user_id][i] = max_msg_id;
     }
     response.num_messages = index;
     return response;

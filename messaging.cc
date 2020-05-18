@@ -61,6 +61,15 @@ public:
     }
 };
 
+template <typename T>
+class ChannelArray {
+private:
+    T array[CHANNELS_PER_USER];
+
+public:
+    operator[](size_t n) { return array[n]; }
+};
+
 typedef struct {
     message_id_t message_id;
     user_id_t author_id;

@@ -325,7 +325,7 @@ void dispatch_task(const Task *task,
     std::vector<PendingRequest> executing_reqs;
     auto start = std::chrono::high_resolution_clock::now();
     time_t time = 0;
-    while (requests.size() != 0 && pending_reqs.size() != 0) {
+    while (requests.size() != 0 || pending_reqs.size() != 0) {
         for (auto it = pending_reqs.begin(); it != pending_reqs.end(); it++) {
             auto &req = *it;
             if (req.future.is_ready()) {

@@ -1,7 +1,10 @@
+#include <cstring>
 #include <ctime>
 #include <deque>
 #include <list>
 #include <numeric>
+#include <random>
+#include <string>
 
 #include "getopt.h"
 #include "legion.h"
@@ -33,6 +36,7 @@ enum MessageFieldID {
 
 constexpr unsigned int CHANNELS_PER_USER = 5;
 constexpr unsigned int MESSAGE_LENGTH = 256;
+constexpr char msg_template[] = "This is a message from user %d on channel %d";
 
 typedef uint16_t user_id_t;
 typedef uint8_t channel_id_t;
@@ -43,7 +47,12 @@ private:
     char buffer[MESSAGE_LENGTH];
 
 public:
+    MessageText() { strcpy(buffer, ""); }
+    MessageText(std::string str) { strcpy(buffer, str.c_str()); }
+    MessageText(char *str) { strcpy(buffer, str); }
+
     operator void *() { return buffer; }
+    operator char *() { return buffer; }
     char &operator[](size_t n) { return buffer[n]; }
     MessageText &operator=(MessageText text) {
         memcpy(buffer, text, sizeof buffer);
@@ -170,6 +179,8 @@ void dispatch_task(const Task *task,
         exit(EXIT_FAILURE);
     }
 
+    std::default_random_engine rng;
+
     /* Users array. */
     Rect<1> user_id_range(0, user_count);
     IndexSpaceT<1> user_ids = runtime->create_index_space(ctx, user_id_range);
@@ -192,7 +203,8 @@ void dispatch_task(const Task *task,
     std::vector<int> all_channel_ids(channel_count);
     std::iota(all_channel_ids.begin(), all_channel_ids.end(), 0);
     for (PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
-        std::random_shuffle(all_channel_ids.begin(), all_channel_ids.end());
+        std::random_shuffle(all_channel_ids.begin(), all_channel_ids.end(),
+                            rng);
         for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
             channel_id_mem[*iter][i] = all_channel_ids[i];
         }
@@ -265,7 +277,23 @@ void dispatch_task(const Task *task,
 
     /* Generate random requests. */
     std::deque<Request> requests(n_requests);
-    // TODO: actually generate.
+    unsigned int n_post_requests = n_requests / (request_ratio + 1);
+    unsigned int n_fetch_requests = n_post_requests * request_ratio;
+    auto random_user_id =
+        std::bind(std::uniform_int_distribution(0U, user_count - 1), rng);
+    for (unsigned int i = 0; i < n_fetch_requests; i++) {
+        requests.push_back({.action = FETCH, .user_id = random_user_id()});
+    }
+    auto random_watched_ix = std::bind(
+        std::uniform_int_distribution(0U, CHANNELS_PER_USER - 1), rng);
+    for (unsigned int i = 0; i < n_post_requests; i++) {
+        Request req = {.action = POST, .user_id = random_user_id()};
+        req.channel_id = channel_id_mem[req.user_id][random_watched_ix()];
+        snprintf(req.message, MESSAGE_LENGTH, msg_template, req.user_id,
+                 req.channel_id);
+        requests.push_back(req);
+    }
+    std::random_shuffle(requests.begin(), requests.end(), rng);
 
     /* Execute requests. */
     std::list<PendingRequest> pending_reqs;
@@ -353,8 +381,7 @@ void dispatch_task(const Task *task,
             }
         }
 
-        Request request = requests.back();
-        requests.pop_back();
+        Request &request = requests.front();
         switch (request.action) {
         case FETCH: {
             PrepareFetchData data = {.user_id = request.user_id};
@@ -397,6 +424,7 @@ void dispatch_task(const Task *task,
             break;
         }
         }
+        requests.pop_front();
     }
 }
 

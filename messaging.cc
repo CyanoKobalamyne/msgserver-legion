@@ -411,6 +411,9 @@ void dispatch_task(const Task *task,
             }
         }
 
+        if (requests.size() == 0) {
+            continue;
+        }
         Request &request = requests.front();
         switch (request.action) {
         case FETCH: {

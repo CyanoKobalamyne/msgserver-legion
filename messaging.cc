@@ -1,6 +1,7 @@
 #include <cstring>
 #include <ctime>
 #include <deque>
+#include <functional>
 #include <list>
 #include <numeric>
 #include <random>
@@ -203,8 +204,7 @@ void dispatch_task(const Task *task,
     std::vector<int> all_channel_ids(channel_count);
     std::iota(all_channel_ids.begin(), all_channel_ids.end(), 0);
     for (PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
-        std::random_shuffle(all_channel_ids.begin(), all_channel_ids.end(),
-                            rng);
+        std::shuffle(all_channel_ids.begin(), all_channel_ids.end(), rng);
         for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
             channel_id_mem[*iter][i] = all_channel_ids[i];
         }
@@ -293,7 +293,7 @@ void dispatch_task(const Task *task,
                  req.channel_id);
         requests.push_back(req);
     }
-    std::random_shuffle(requests.begin(), requests.end(), rng);
+    std::shuffle(requests.begin(), requests.end(), rng);
 
     /* Execute requests. */
     std::list<PendingRequest> pending_reqs;

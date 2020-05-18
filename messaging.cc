@@ -408,7 +408,7 @@ ExecuteFetchResponse execute_fetch_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
-    const FieldAccessor<READ_ONLY, channel_id_t *, 1> next_unread(
+    const FieldAccessor<READ_WRITE, channel_id_t *, 1> next_unread(
         regions[0], NEXT_UNREAD_MSG_IDS);
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
         if (data->next_unread_msg_ids[i] != next_unread[data->user_id][i]) {
@@ -431,6 +431,7 @@ ExecuteFetchResponse execute_fetch_task(
                                         .timestamp = timestamp[j],
                                         .text = text[j]};
         }
+        next_unread[data->user_id][i] = data->next_channel_msg_ids[i];
     }
     response.num_messages = index;
     return response;

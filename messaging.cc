@@ -358,7 +358,8 @@ void dispatch_task(const Task *task,
                              j < data.next_channel_msg_ids[i]; j++, reqid++) {
                             launcher.add_region_requirement(RegionRequirement(
                                 runtime->get_logical_subregion_by_color(
-                                    message_partition, i * msg_count + j),
+                                    message_partition,
+                                    Point<2>(data.watched_channel_ids[i], j)),
                                 READ_ONLY, EXCLUSIVE, messages));
                             launcher.add_field(reqid, NEXT_MSG_ID);
                         }
@@ -393,8 +394,8 @@ void dispatch_task(const Task *task,
                     launcher.add_region_requirement(RegionRequirement(
                         runtime->get_logical_subregion_by_color(
                             message_partition,
-                            req.request.channel_id * msg_count +
-                                response.next_channel_msg_id),
+                            Point<2>(req.request.channel_id,
+                                     response.next_channel_msg_id)),
                         WRITE_DISCARD, EXCLUSIVE, messages));
                     launcher.add_field(0, AUTHOR_ID);
                     launcher.add_field(0, TIMESTAMP);

@@ -452,9 +452,20 @@ ExecutePostResponse execute_post_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
     ExecutePostData *data = (ExecutePostData *)task->args;
-    ExecutePostResponse response;
-    // TOFO: perform task.
-    return response;
+    FieldAccessor<READ_WRITE, message_id_t, 1> next_msg(regions[0],
+                                                        NEXT_MSG_ID);
+    if (next_msg[data->channel_id] != data->next_channel_msg_id) {
+        return {.success = false};
+    }
+    FieldAccessor<WRITE_DISCARD, user_id_t, 1> author(regions[1], AUTHOR_ID);
+    author[data->next_channel_msg_id] = data->message.author_id;
+    FieldAccessor<WRITE_DISCARD, time_t, 1> timestamp(regions[1], TIMESTAMP);
+    timestamp[data->next_channel_msg_id] = data->message.timestamp;
+    FieldAccessor<WRITE_DISCARD, char[MESSAGE_LENGTH], 1> text(regions[1],
+                                                               TEXT);
+    text[data->next_channel_msg_id] = data->message.text;
+    next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
+    return {.success = true};
 }
 
 int main(int argc, char **argv) {

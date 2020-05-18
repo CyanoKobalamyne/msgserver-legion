@@ -353,14 +353,15 @@ void dispatch_task(const Task *task,
                             next_unread_partition, req.request.user_id),
                         READ_WRITE, EXCLUSIVE, next_unreads));
                     launcher.add_field(0, NEXT_UNREAD_MSG_IDS);
+                    unsigned long reqid = 1;
                     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
                         for (message_id_t j = data.next_unread_msg_ids[i];
-                             j < data.next_channel_msg_ids[i]; j++) {
+                             j < data.next_channel_msg_ids[i]; j++, reqid++) {
                             launcher.add_region_requirement(RegionRequirement(
                                 runtime->get_logical_subregion_by_color(
                                     message_partition, i * msg_count + j),
                                 READ_ONLY, EXCLUSIVE, messages));
-                            launcher.add_field(0, NEXT_MSG_ID);
+                            launcher.add_field(reqid, NEXT_MSG_ID);
                         }
                     }
                     executing_reqs.push_back(
@@ -431,7 +432,7 @@ void dispatch_task(const Task *task,
                     runtime->get_logical_subregion_by_color(
                         channel_partition, watched_channel_ids[i]),
                     READ_ONLY, EXCLUSIVE, channels));
-                launcher.add_field(0, NEXT_MSG_ID);
+                launcher.add_field(1 + i, NEXT_MSG_ID);
             }
             pending_reqs.push_back(
                 {.future = runtime->execute_task(ctx, launcher),

@@ -70,7 +70,7 @@ private:
 
 public:
     PerUserChannel() {
-        for (size_t i = 0; i < sizeof array; i++) array[i] = T();
+        for (size_t i = 0; i < CHANNELS_PER_USER; i++) array[i] = T();
     }
     PerUserChannel(T src[]) { memcpy(array, src, sizeof array); }
 

@@ -290,8 +290,8 @@ void dispatch_task(const Task *task,
     FieldSpace msg_fields = runtime->create_field_space(ctx);
     allocator = runtime->create_field_allocator(ctx, msg_fields);
     allocator.allocate_field(sizeof(user_id_t), AUTHOR_ID);
-    allocator.allocate_field(sizeof(user_id_t), TIMESTAMP);
-    allocator.allocate_field(MESSAGE_LENGTH * sizeof(char), TEXT);
+    allocator.allocate_field(sizeof(time_t), TIMESTAMP);
+    allocator.allocate_field(sizeof(MessageText), TEXT);
     LogicalRegionT<2> messages =
         runtime->create_logical_region(ctx, msg_ids, msg_fields);
     LogicalPartition message_partition =

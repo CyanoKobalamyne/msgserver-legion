@@ -196,12 +196,32 @@ void dispatch_task(const Task *task,
         }
     }
 
+    // Check that (nonzero) arguments are given.
     if (user_count == 0 || channel_count == 0 || msg_count == 0 ||
-        n_requests == 0) {
+        n_requests == 0 || request_ratio == 0) {
         std::cout << "Usage: " << args.argv[0]
                   << " [-n num_users] [-k num_channels] [-m num_messages] [-t "
                      "test_requests] [-r test_request_ratio]"
                   << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Check that we have enough channels to choose from.
+    if (channel_count < CHANNELS_PER_USER) {
+        std::cout << "You must specify at least " << CHANNELS_PER_USER
+                  << " channels" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    unsigned long n_post_requests = n_requests / (request_ratio + 1);
+    unsigned long n_fetch_requests = n_post_requests * request_ratio;
+
+    // Check that we will have at lest one request.
+    if (n_post_requests == 0) {
+        std::cout
+            << "The number of requests is too low for the chosen ratio.\n"
+            << "Please increase the number of requests or decrease the ratio."
+            << std::endl;
         exit(EXIT_FAILURE);
     }
 
@@ -299,17 +319,15 @@ void dispatch_task(const Task *task,
 
     /* Generate random requests. */
     std::deque<Request> requests(n_requests);
-    unsigned int n_post_requests = n_requests / (request_ratio + 1);
-    unsigned int n_fetch_requests = n_post_requests * request_ratio;
     auto random_user_id = std::bind(
         std::uniform_int_distribution(user_id_t(0), user_id_t(user_count - 1)),
         rng);
-    for (unsigned int i = 0; i < n_fetch_requests; i++) {
+    for (unsigned long i = 0; i < n_fetch_requests; i++) {
         requests.push_back({.action = FETCH, .user_id = random_user_id()});
     }
     auto random_watched_ix = std::bind(
         std::uniform_int_distribution(0U, CHANNELS_PER_USER - 1), rng);
-    for (unsigned int i = 0; i < n_post_requests; i++) {
+    for (unsigned long i = 0; i < n_post_requests; i++) {
         Request req = {.action = POST, .user_id = random_user_id()};
         req.channel_id =
             ((PerUserChannel<channel_id_t>)

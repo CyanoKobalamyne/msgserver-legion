@@ -10,6 +10,7 @@
 
 #include "getopt.h"
 #include "legion.h"
+#include "x86intrin.h"
 
 using namespace Legion;
 
@@ -101,6 +102,7 @@ typedef struct {
 typedef struct {
     PerUserChannel<message_id_t> next_unread_msg_ids;
     PerUserChannel<message_id_t> next_channel_msg_ids;
+    unsigned long long cycles;
 } PrepareFetchResponse;
 
 typedef struct {
@@ -114,6 +116,7 @@ typedef struct {
     bool success;
     message_id_t num_messages;
     MessageList messages;
+    unsigned long long cycles;
 } ExecuteFetchResponse;
 
 typedef struct {
@@ -122,6 +125,7 @@ typedef struct {
 
 typedef struct {
     message_id_t next_channel_msg_id;
+    unsigned long long cycles;
 } PreparePostResponse;
 
 typedef struct {
@@ -132,6 +136,7 @@ typedef struct {
 
 typedef struct {
     bool success;
+    unsigned long long cycles;
 } ExecutePostResponse;
 
 enum Action {
@@ -338,6 +343,14 @@ void dispatch_task(const Task *task,
     }
     std::shuffle(requests.begin(), requests.end(), rng);
 
+    /* Statistics. */
+    std::vector<unsigned long long> prepare_fetch_cycles;
+    std::vector<unsigned long long> prepare_post_cycles;
+    std::vector<unsigned long long> execute_fetch_cycles;
+    std::vector<unsigned long long> execute_post_cycles;
+    unsigned long n_failed_fetch = 0;
+    unsigned long n_failed_post = 0;
+
     /* Execute requests. */
     std::list<PendingRequest> pending_reqs;
     std::vector<PendingRequest> executing_reqs;
@@ -385,6 +398,7 @@ void dispatch_task(const Task *task,
                     executing_reqs.push_back(
                         {.future = runtime->execute_task(ctx, launcher),
                          .request = req.request});
+                    prepare_fetch_cycles.push_back(response.cycles);
                     break;
                 }
                 case POST: {
@@ -421,6 +435,7 @@ void dispatch_task(const Task *task,
                     executing_reqs.push_back(
                         {.future = runtime->execute_task(ctx, launcher),
                          .request = req.request});
+                    prepare_post_cycles.push_back(response.cycles);
                     break;
                 }
                 }
@@ -483,13 +498,25 @@ void dispatch_task(const Task *task,
     // Wait for all tasks to complete.
     for (auto req : executing_reqs) {
         switch (req.request.action) {
-        case FETCH:
-            req.future.get_result<ExecuteFetchResponse>();
+        case FETCH: {
+            auto response = req.future.get_result<ExecuteFetchResponse>();
+            if (response.success) {
+                execute_fetch_cycles.push_back(response.cycles);
+            } else {
+                n_failed_fetch++;
+            }
             break;
+        }
 
-        case POST:
-            req.future.get_result<ExecutePostResponse>();
+        case POST: {
+            auto response = req.future.get_result<ExecutePostResponse>();
+            if (response.success) {
+                execute_post_cycles.push_back(response.cycles);
+            } else {
+                n_failed_post++;
+            }
             break;
+        }
         }
     }
 
@@ -499,12 +526,38 @@ void dispatch_task(const Task *task,
         std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     std::cout << duration.count() << std::endl;
 
+    double avg_prepare_fetch_cycles;
+    for (auto c : prepare_fetch_cycles) {
+        avg_prepare_fetch_cycles += (double)c / prepare_fetch_cycles.size();
+    }
+    std::cout << "Prepare fetch: " << avg_prepare_fetch_cycles
+              << " cycles avg." << std::endl;
+    double avg_execute_fetch_cycles;
+    for (auto c : execute_fetch_cycles) {
+        avg_execute_fetch_cycles += (double)c / execute_fetch_cycles.size();
+    }
+    std::cout << "Execute fetch: " << avg_execute_fetch_cycles
+              << " cycles avg. (failed " << n_failed_fetch << ")" << std::endl;
+    double avg_prepare_post_cycles;
+    for (auto c : prepare_post_cycles) {
+        avg_prepare_post_cycles += (double)c / prepare_post_cycles.size();
+    }
+    std::cout << "Prepare post: " << avg_prepare_post_cycles << " cycles avg."
+              << std::endl;
+    double avg_execute_post_cycles;
+    for (auto c : execute_post_cycles) {
+        avg_execute_post_cycles += (double)c / execute_post_cycles.size();
+    }
+    std::cout << "Execute post: " << avg_execute_post_cycles
+              << " cycles avg. (failed " << n_failed_post << ")" << std::endl;
+
     return;
 }
 
 PrepareFetchResponse prepare_fetch_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
+    unsigned long long start = __rdtsc();
     PrepareFetchData *data = (PrepareFetchData *)task->args;
     PrepareFetchResponse response;
     const FieldAccessor<READ_ONLY, PerUserChannel<message_id_t>, 1>
@@ -518,12 +571,15 @@ PrepareFetchResponse prepare_fetch_task(
         response.next_channel_msg_ids[i] =
             next_msg[data->watched_channel_ids[i]];
     }
+    unsigned long long end = __rdtsc();
+    response.cycles = end - start;
     return response;
 }
 
 ExecuteFetchResponse execute_fetch_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
+    unsigned long long start = __rdtsc();
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
     const FieldAccessor<READ_WRITE, PerUserChannel<message_id_t>, 1>
         next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
@@ -556,23 +612,29 @@ ExecuteFetchResponse execute_fetch_task(
     }
     next_unread[data->user_id] = user_next_unread;  // Overwrite values.
     response.num_messages = index;
+    unsigned long long end = __rdtsc();
+    response.cycles = end - start;
     return response;
 }
 
 PreparePostResponse prepare_post_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
+    unsigned long long start = __rdtsc();
     PreparePostData *data = (PreparePostData *)task->args;
     PreparePostResponse response;
     FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(regions[0],
                                                        NEXT_MSG_ID);
     response.next_channel_msg_id = next_msg[data->channel_id];
+    unsigned long long end = __rdtsc();
+    response.cycles = end - start;
     return response;
 }
 
 ExecutePostResponse execute_post_task(
     const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
     Runtime *runtime) {
+    unsigned long long start = __rdtsc();
     ExecutePostData *data = (ExecutePostData *)task->args;
     FieldAccessor<READ_WRITE, message_id_t, 1> next_msg(regions[0],
                                                         NEXT_MSG_ID);
@@ -587,7 +649,8 @@ ExecutePostResponse execute_post_task(
     FieldAccessor<WRITE_DISCARD, MessageText, 2> text(regions[1], TEXT);
     text[msg_id] = data->message.text;
     next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
-    return {.success = true};
+    unsigned long long end = __rdtsc();
+    return {.success = true, .cycles = end - start};
 }
 
 int main(int argc, char **argv) {

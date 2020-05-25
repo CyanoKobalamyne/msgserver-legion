@@ -33,7 +33,7 @@ for n in USERS:
                                 f"{os.path.join(os.getcwd(),'messaging')} "
                                 f"-n {n} -k {k} -m {m} -t {t} -r {r} "
                                 f"-ll:cpu {cpu} -level 5")
-                            times.append(int(stream.read().strip()))
+                            times.append(int(stream.readline().strip()))
                         results.append(sum(times) / len(times))
                     print(" ".join(f"{r/1e6:4.0f}" for r in results))
             print("\n")

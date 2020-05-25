@@ -318,7 +318,7 @@ void dispatch_task(const Task *task,
         runtime->get_logical_partition(messages, msg_id_partition);
 
     /* Generate random requests. */
-    std::deque<Request> requests(n_requests);
+    std::deque<Request> requests;
     auto random_user_id = std::bind(
         std::uniform_int_distribution(user_id_t(0), user_id_t(user_count - 1)),
         rng);

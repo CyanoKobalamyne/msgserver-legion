@@ -526,25 +526,25 @@ void dispatch_task(const Task *task,
         std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     std::cout << duration.count() << std::endl;
 
-    double avg_prepare_fetch_cycles;
+    double avg_prepare_fetch_cycles = 0;
     for (auto c : prepare_fetch_cycles) {
         avg_prepare_fetch_cycles += (double)c / prepare_fetch_cycles.size();
     }
     std::cout << "Prepare fetch: " << avg_prepare_fetch_cycles
               << " cycles avg." << std::endl;
-    double avg_execute_fetch_cycles;
+    double avg_execute_fetch_cycles = 0;
     for (auto c : execute_fetch_cycles) {
         avg_execute_fetch_cycles += (double)c / execute_fetch_cycles.size();
     }
     std::cout << "Execute fetch: " << avg_execute_fetch_cycles
               << " cycles avg. (failed " << n_failed_fetch << ")" << std::endl;
-    double avg_prepare_post_cycles;
+    double avg_prepare_post_cycles = 0;
     for (auto c : prepare_post_cycles) {
         avg_prepare_post_cycles += (double)c / prepare_post_cycles.size();
     }
     std::cout << "Prepare post: " << avg_prepare_post_cycles << " cycles avg."
               << std::endl;
-    double avg_execute_post_cycles;
+    double avg_execute_post_cycles = 0;
     for (auto c : execute_post_cycles) {
         avg_execute_post_cycles += (double)c / execute_post_cycles.size();
     }

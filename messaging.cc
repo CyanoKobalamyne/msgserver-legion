@@ -77,12 +77,12 @@ public:
     T &operator[](size_t n) { return array[n]; }
 };
 
-typedef struct {
+struct Message {
     message_id_t message_id;
     user_id_t author_id;
     time_t timestamp;
     MessageText text;
-} Message;
+};
 
 class MessageList {
 private:
@@ -92,67 +92,67 @@ public:
     Message &operator[](size_t n) { return msgs[n]; }
 };
 
-typedef struct {
+struct PrepareFetchData {
     user_id_t user_id;
     PerUserChannel<channel_id_t> watched_channel_ids;
-} PrepareFetchData;
+};
 
-typedef struct {
+struct PrepareFetchResponse {
     PerUserChannel<message_id_t> next_unread_msg_ids;
     PerUserChannel<message_id_t> next_channel_msg_ids;
     unsigned long long cycles;
-} PrepareFetchResponse;
+};
 
-typedef struct {
+struct ExecuteFetchData {
     user_id_t user_id;
     PerUserChannel<channel_id_t> watched_channel_ids;
     PerUserChannel<message_id_t> next_unread_msg_ids;
     PerUserChannel<message_id_t> next_channel_msg_ids;
-} ExecuteFetchData;
+};
 
-typedef struct {
+struct ExecuteFetchResponse {
     bool success;
     message_id_t num_messages;
     MessageList messages;
     unsigned long long cycles;
-} ExecuteFetchResponse;
+};
 
-typedef struct {
+struct PreparePostData {
     channel_id_t channel_id;
-} PreparePostData;
+};
 
-typedef struct {
+struct PreparePostResponse {
     message_id_t next_channel_msg_id;
     unsigned long long cycles;
-} PreparePostResponse;
+};
 
-typedef struct {
+struct ExecutePostData {
     channel_id_t channel_id;
     message_id_t next_channel_msg_id;
     Message message;
-} ExecutePostData;
+};
 
-typedef struct {
+struct ExecutePostResponse {
     bool success;
     unsigned long long cycles;
-} ExecutePostResponse;
+};
 
 enum Action {
     POST,
     FETCH,
 };
 
-typedef struct {
+struct Request {
     Action action;
     user_id_t user_id;
     channel_id_t channel_id;
     MessageText message;
-} Request;
+};
 
-typedef struct {
+struct PendingRequest {
     Legion::Future future;
     Request request;
-} PendingRequest;
+};
 
 const struct option options[] = {
     {.name = "n", .has_arg = required_argument, .flag = NULL, .val = 'n'},

@@ -12,8 +12,6 @@
 #include "legion.h"
 #include "x86intrin.h"
 
-using namespace Legion;
-
 enum TaskID {
     INIT_TASK,
     DISPATCH_TASK,
@@ -152,7 +150,7 @@ typedef struct {
 } Request;
 
 typedef struct {
-    Future future;
+    Legion::Future future;
     Request request;
 } PendingRequest;
 
@@ -165,10 +163,10 @@ const struct option options[] = {
     {0, 0, 0, 0},
 };
 
-void dispatch_task(const Task *task,
-                   const std::vector<PhysicalRegion> &regions, Context ctx,
-                   Runtime *runtime) {
-    const InputArgs &args = Runtime::get_input_args();
+void dispatch_task(const Legion::Task *task,
+                   const std::vector<Legion::PhysicalRegion> &regions,
+                   Legion::Context ctx, Legion::Runtime *runtime) {
+    const Legion::InputArgs &args = Legion::Runtime::get_input_args();
     user_id_t user_count = 0;
     channel_id_t channel_count = 0;
     message_id_t msg_count = 0;
@@ -233,27 +231,30 @@ void dispatch_task(const Task *task,
     std::default_random_engine rng;
 
     /* Users array. */
-    Rect<1> user_id_range(0, user_count);
-    IndexSpaceT<1> user_ids = runtime->create_index_space(ctx, user_id_range);
-    IndexPartition user_id_partition =
+    Legion::Rect<1> user_id_range(0, user_count);
+    Legion::IndexSpaceT<1> user_ids =
+        runtime->create_index_space(ctx, user_id_range);
+    Legion::IndexPartition user_id_partition =
         runtime->create_equal_partition(ctx, user_ids, user_ids);
-    FieldSpace user_fields = runtime->create_field_space(ctx);
-    FieldAllocator allocator =
+    Legion::FieldSpace user_fields = runtime->create_field_space(ctx);
+    Legion::FieldAllocator allocator =
         runtime->create_field_allocator(ctx, user_fields);
     allocator.allocate_field(CHANNELS_PER_USER * sizeof(channel_id_t),
                              FOLLOWED_CHANNEL_IDS);
-    LogicalRegionT<1> users =
+    Legion::LogicalRegionT<1> users =
         runtime->create_logical_region(ctx, user_ids, user_fields);
     // Initialize array.
-    RegionRequirement user_init_req(users, WRITE_DISCARD, EXCLUSIVE, users);
+    Legion::RegionRequirement user_init_req(users, WRITE_DISCARD, EXCLUSIVE,
+                                            users);
     user_init_req.add_field(FOLLOWED_CHANNEL_IDS);
-    InlineLauncher user_init_launcher(user_init_req);
-    PhysicalRegion init_region = runtime->map_region(ctx, user_init_launcher);
-    const FieldAccessor<WRITE_DISCARD, PerUserChannel<channel_id_t>, 1>
+    Legion::InlineLauncher user_init_launcher(user_init_req);
+    Legion::PhysicalRegion init_region =
+        runtime->map_region(ctx, user_init_launcher);
+    const Legion::FieldAccessor<WRITE_DISCARD, PerUserChannel<channel_id_t>, 1>
         channel_id_mem(init_region, FOLLOWED_CHANNEL_IDS);
     std::vector<channel_id_t> all_channel_ids(channel_count);
     std::iota(all_channel_ids.begin(), all_channel_ids.end(), 0);
-    for (PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
+    for (Legion::PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
         std::shuffle(all_channel_ids.begin(), all_channel_ids.end(), rng);
         channel_id_mem[*iter] =
             PerUserChannel<channel_id_t>(&all_channel_ids[0]);
@@ -261,65 +262,69 @@ void dispatch_task(const Task *task,
     // Leave this region mapped.
 
     /* Next unread array. */
-    FieldSpace next_unread_fields = runtime->create_field_space(ctx);
+    Legion::FieldSpace next_unread_fields = runtime->create_field_space(ctx);
     allocator = runtime->create_field_allocator(ctx, next_unread_fields);
     allocator.allocate_field(CHANNELS_PER_USER * sizeof(message_id_t),
                              NEXT_UNREAD_MSG_IDS);
-    LogicalRegionT<1> next_unreads =
+    Legion::LogicalRegionT<1> next_unreads =
         runtime->create_logical_region(ctx, user_ids, next_unread_fields);
-    LogicalPartition next_unread_partition =
+    Legion::LogicalPartition next_unread_partition =
         runtime->get_logical_partition(next_unreads, user_id_partition);
     // Initialize array.
-    RegionRequirement next_unread_init_req(next_unreads, WRITE_DISCARD,
-                                           EXCLUSIVE, next_unreads);
+    Legion::RegionRequirement next_unread_init_req(next_unreads, WRITE_DISCARD,
+                                                   EXCLUSIVE, next_unreads);
     next_unread_init_req.add_field(NEXT_UNREAD_MSG_IDS);
-    InlineLauncher next_unread_init_launcher(next_unread_init_req);
+    Legion::InlineLauncher next_unread_init_launcher(next_unread_init_req);
     init_region = runtime->map_region(ctx, next_unread_init_launcher);
-    const FieldAccessor<WRITE_DISCARD, PerUserChannel<message_id_t>, 1>
+    const Legion::FieldAccessor<WRITE_DISCARD, PerUserChannel<message_id_t>, 1>
         next_unread_mem(init_region, NEXT_UNREAD_MSG_IDS);
-    for (PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
+    for (Legion::PointInRectIterator<1> iter(user_id_range); iter(); iter++) {
         next_unread_mem[*iter] = PerUserChannel<message_id_t>();
     }
     runtime->unmap_region(ctx, init_region);
 
     /* Channels array. */
-    Rect<1> channel_id_range(0, channel_count);
-    IndexSpaceT<1> channel_ids =
+    Legion::Rect<1> channel_id_range(0, channel_count);
+    Legion::IndexSpaceT<1> channel_ids =
         runtime->create_index_space(ctx, channel_id_range);
-    IndexPartition channel_id_partition =
+    Legion::IndexPartition channel_id_partition =
         runtime->create_equal_partition(ctx, channel_ids, channel_ids);
-    FieldSpace channel_fields = runtime->create_field_space(ctx);
+    Legion::FieldSpace channel_fields = runtime->create_field_space(ctx);
     allocator = runtime->create_field_allocator(ctx, channel_fields);
     allocator.allocate_field(sizeof(message_id_t), NEXT_MSG_ID);
-    LogicalRegionT<1> channels =
+    Legion::LogicalRegionT<1> channels =
         runtime->create_logical_region(ctx, channel_ids, channel_fields);
-    LogicalPartition channel_partition =
+    Legion::LogicalPartition channel_partition =
         runtime->get_logical_partition(channels, channel_id_partition);
     // Initialize array.
-    RegionRequirement init_req(channels, WRITE_DISCARD, EXCLUSIVE, channels);
+    Legion::RegionRequirement init_req(channels, WRITE_DISCARD, EXCLUSIVE,
+                                       channels);
     init_req.add_field(NEXT_MSG_ID);
-    InlineLauncher init_launcher(init_req);
+    Legion::InlineLauncher init_launcher(init_req);
     init_region = runtime->map_region(ctx, init_launcher);
-    const FieldAccessor<WRITE_DISCARD, message_id_t, 1> next_msg(init_region,
-                                                                 NEXT_MSG_ID);
-    for (PointInRectIterator<1> iter(channel_id_range); iter(); iter++) {
+    const Legion::FieldAccessor<WRITE_DISCARD, message_id_t, 1> next_msg(
+        init_region, NEXT_MSG_ID);
+    for (Legion::PointInRectIterator<1> iter(channel_id_range); iter();
+         iter++) {
         next_msg[*iter] = 0;
     }
     runtime->unmap_region(ctx, init_region);
 
     /* Messages array. */
-    Rect<2> msg_id_range(Point<2>(0, 0), Point<2>(channel_count, msg_count));
-    IndexSpaceT<2> msg_ids = runtime->create_index_space(ctx, msg_id_range);
-    IndexPartition msg_id_partition =
+    Legion::Rect<2> msg_id_range(Legion::Point<2>(0, 0),
+                                 Legion::Point<2>(channel_count, msg_count));
+    Legion::IndexSpaceT<2> msg_ids =
+        runtime->create_index_space(ctx, msg_id_range);
+    Legion::IndexPartition msg_id_partition =
         runtime->create_equal_partition(ctx, msg_ids, msg_ids);
-    FieldSpace msg_fields = runtime->create_field_space(ctx);
+    Legion::FieldSpace msg_fields = runtime->create_field_space(ctx);
     allocator = runtime->create_field_allocator(ctx, msg_fields);
     allocator.allocate_field(sizeof(user_id_t), AUTHOR_ID);
     allocator.allocate_field(sizeof(time_t), TIMESTAMP);
     allocator.allocate_field(sizeof(MessageText), TEXT);
-    LogicalRegionT<2> messages =
+    Legion::LogicalRegionT<2> messages =
         runtime->create_logical_region(ctx, msg_ids, msg_fields);
-    LogicalPartition message_partition =
+    Legion::LogicalPartition message_partition =
         runtime->get_logical_partition(messages, msg_id_partition);
 
     /* Generate random requests. */
@@ -375,10 +380,10 @@ void dispatch_task(const Task *task,
                     memcpy(data.next_unread_msg_ids,
                            response.next_unread_msg_ids,
                            sizeof data.next_unread_msg_ids);
-                    TaskLauncher launcher(
+                    Legion::TaskLauncher launcher(
                         EXECUTE_FETCH_TASK,
-                        TaskArgument(&data, sizeof(ExecuteFetchData)));
-                    launcher.add_region_requirement(RegionRequirement(
+                        Legion::TaskArgument(&data, sizeof(ExecuteFetchData)));
+                    launcher.add_region_requirement(Legion::RegionRequirement(
                         runtime->get_logical_subregion_by_color(
                             next_unread_partition, req.request.user_id),
                         READ_WRITE, EXCLUSIVE, next_unreads));
@@ -387,11 +392,13 @@ void dispatch_task(const Task *task,
                     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
                         for (message_id_t j = data.next_unread_msg_ids[i];
                              j < data.next_channel_msg_ids[i]; j++, reqid++) {
-                            launcher.add_region_requirement(RegionRequirement(
-                                runtime->get_logical_subregion_by_color(
-                                    message_partition,
-                                    Point<2>(data.watched_channel_ids[i], j)),
-                                READ_ONLY, EXCLUSIVE, messages));
+                            launcher.add_region_requirement(
+                                Legion::RegionRequirement(
+                                    runtime->get_logical_subregion_by_color(
+                                        message_partition,
+                                        Legion::Point<2>(
+                                            data.watched_channel_ids[i], j)),
+                                    READ_ONLY, EXCLUSIVE, messages));
                             launcher.add_field(reqid, NEXT_MSG_ID);
                         }
                     }
@@ -415,19 +422,19 @@ void dispatch_task(const Task *task,
                         .channel_id = req.request.channel_id,
                         .next_channel_msg_id = response.next_channel_msg_id,
                         .message = msg};
-                    TaskLauncher launcher(
+                    Legion::TaskLauncher launcher(
                         EXECUTE_POST_TASK,
-                        TaskArgument(&data, sizeof(PrepareFetchData)));
-                    launcher.add_region_requirement(RegionRequirement(
+                        Legion::TaskArgument(&data, sizeof(PrepareFetchData)));
+                    launcher.add_region_requirement(Legion::RegionRequirement(
                         runtime->get_logical_subregion_by_color(
                             channel_partition, req.request.channel_id),
                         READ_WRITE, EXCLUSIVE, channels));
                     launcher.add_field(0, NEXT_MSG_ID);
-                    launcher.add_region_requirement(RegionRequirement(
+                    launcher.add_region_requirement(Legion::RegionRequirement(
                         runtime->get_logical_subregion_by_color(
                             message_partition,
-                            Point<2>(req.request.channel_id,
-                                     response.next_channel_msg_id)),
+                            Legion::Point<2>(req.request.channel_id,
+                                             response.next_channel_msg_id)),
                         WRITE_DISCARD, EXCLUSIVE, messages));
                     launcher.add_field(1, AUTHOR_ID);
                     launcher.add_field(1, TIMESTAMP);
@@ -455,16 +462,16 @@ void dispatch_task(const Task *task,
                 channel_id_mem[request.user_id];
             memcpy(data.watched_channel_ids, watched_channel_ids,
                    sizeof data.watched_channel_ids);
-            TaskLauncher launcher(
+            Legion::TaskLauncher launcher(
                 PREPARE_FETCH_TASK,
-                TaskArgument(&data, sizeof(PrepareFetchData)));
-            launcher.add_region_requirement(
-                RegionRequirement(runtime->get_logical_subregion_by_color(
-                                      next_unread_partition, request.user_id),
-                                  READ_ONLY, EXCLUSIVE, next_unreads));
+                Legion::TaskArgument(&data, sizeof(PrepareFetchData)));
+            launcher.add_region_requirement(Legion::RegionRequirement(
+                runtime->get_logical_subregion_by_color(next_unread_partition,
+                                                        request.user_id),
+                READ_ONLY, EXCLUSIVE, next_unreads));
             launcher.add_field(0, NEXT_UNREAD_MSG_IDS);
             for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-                launcher.add_region_requirement(RegionRequirement(
+                launcher.add_region_requirement(Legion::RegionRequirement(
                     runtime->get_logical_subregion_by_color(
                         channel_partition, watched_channel_ids[i]),
                     READ_ONLY, EXCLUSIVE, channels));
@@ -478,13 +485,13 @@ void dispatch_task(const Task *task,
 
         case POST: {
             PreparePostData data = {.channel_id = request.channel_id};
-            TaskLauncher launcher(
+            Legion::TaskLauncher launcher(
                 PREPARE_POST_TASK,
-                TaskArgument(&data, sizeof(PreparePostData)));
-            launcher.add_region_requirement(
-                RegionRequirement(runtime->get_logical_subregion_by_color(
-                                      channel_partition, request.channel_id),
-                                  READ_ONLY, EXCLUSIVE, channels));
+                Legion::TaskArgument(&data, sizeof(PreparePostData)));
+            launcher.add_region_requirement(Legion::RegionRequirement(
+                runtime->get_logical_subregion_by_color(channel_partition,
+                                                        request.channel_id),
+                READ_ONLY, EXCLUSIVE, channels));
             launcher.add_field(0, NEXT_MSG_ID);
             pending_reqs.push_back(
                 {.future = runtime->execute_task(ctx, launcher),
@@ -555,18 +562,19 @@ void dispatch_task(const Task *task,
 }
 
 PrepareFetchResponse prepare_fetch_task(
-    const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
-    Runtime *runtime) {
+    const Legion::Task *task,
+    const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
+    Legion::Runtime *runtime) {
     unsigned long long start = __rdtsc();
     PrepareFetchData *data = (PrepareFetchData *)task->args;
     PrepareFetchResponse response;
-    const FieldAccessor<READ_ONLY, PerUserChannel<message_id_t>, 1>
+    const Legion::FieldAccessor<READ_ONLY, PerUserChannel<message_id_t>, 1>
         next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
     memcpy(response.next_unread_msg_ids,
            ((PerUserChannel<message_id_t>)next_unread[data->user_id]),
            sizeof response.next_unread_msg_ids);
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-        const FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(
+        const Legion::FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(
             regions[1 + i], NEXT_MSG_ID);
         response.next_channel_msg_ids[i] =
             next_msg[data->watched_channel_ids[i]];
@@ -577,11 +585,12 @@ PrepareFetchResponse prepare_fetch_task(
 }
 
 ExecuteFetchResponse execute_fetch_task(
-    const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
-    Runtime *runtime) {
+    const Legion::Task *task,
+    const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
+    Legion::Runtime *runtime) {
     unsigned long long start = __rdtsc();
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
-    const FieldAccessor<READ_WRITE, PerUserChannel<message_id_t>, 1>
+    const Legion::FieldAccessor<READ_WRITE, PerUserChannel<message_id_t>, 1>
         next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
     PerUserChannel<message_id_t> user_next_unread = next_unread[data->user_id];
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
@@ -597,12 +606,12 @@ ExecuteFetchResponse execute_fetch_task(
                      data->next_unread_msg_ids[i] + MAX_RETURNED_MESSAGES);
         for (message_id_t j = data->next_unread_msg_ids[i]; j < max_msg_id;
              j++, index++) {
-            FieldAccessor<READ_ONLY, user_id_t, 1> author(regions[index],
-                                                          AUTHOR_ID);
-            FieldAccessor<READ_ONLY, time_t, 1> timestamp(regions[index],
-                                                          TIMESTAMP);
-            FieldAccessor<READ_ONLY, MessageText, 1> text(regions[index],
-                                                          TEXT);
+            Legion::FieldAccessor<READ_ONLY, user_id_t, 1> author(
+                regions[index], AUTHOR_ID);
+            Legion::FieldAccessor<READ_ONLY, time_t, 1> timestamp(
+                regions[index], TIMESTAMP);
+            Legion::FieldAccessor<READ_ONLY, MessageText, 1> text(
+                regions[index], TEXT);
             response.messages[index] = {.message_id = j,
                                         .author_id = author[j],
                                         .timestamp = timestamp[j],
@@ -618,13 +627,14 @@ ExecuteFetchResponse execute_fetch_task(
 }
 
 PreparePostResponse prepare_post_task(
-    const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
-    Runtime *runtime) {
+    const Legion::Task *task,
+    const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
+    Legion::Runtime *runtime) {
     unsigned long long start = __rdtsc();
     PreparePostData *data = (PreparePostData *)task->args;
     PreparePostResponse response;
-    FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(regions[0],
-                                                       NEXT_MSG_ID);
+    Legion::FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(regions[0],
+                                                               NEXT_MSG_ID);
     response.next_channel_msg_id = next_msg[data->channel_id];
     unsigned long long end = __rdtsc();
     response.cycles = end - start;
@@ -632,21 +642,25 @@ PreparePostResponse prepare_post_task(
 }
 
 ExecutePostResponse execute_post_task(
-    const Task *task, const std::vector<PhysicalRegion> &regions, Context ctx,
-    Runtime *runtime) {
+    const Legion::Task *task,
+    const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
+    Legion::Runtime *runtime) {
     unsigned long long start = __rdtsc();
     ExecutePostData *data = (ExecutePostData *)task->args;
-    FieldAccessor<READ_WRITE, message_id_t, 1> next_msg(regions[0],
-                                                        NEXT_MSG_ID);
+    Legion::FieldAccessor<READ_WRITE, message_id_t, 1> next_msg(regions[0],
+                                                                NEXT_MSG_ID);
     if (next_msg[data->channel_id] != data->next_channel_msg_id) {
         return {.success = false};
     }
-    Point<2> msg_id(data->channel_id, data->next_channel_msg_id);
-    FieldAccessor<WRITE_DISCARD, user_id_t, 2> author(regions[1], AUTHOR_ID);
+    Legion::Point<2> msg_id(data->channel_id, data->next_channel_msg_id);
+    Legion::FieldAccessor<WRITE_DISCARD, user_id_t, 2> author(regions[1],
+                                                              AUTHOR_ID);
     author[msg_id] = data->message.author_id;
-    FieldAccessor<WRITE_DISCARD, time_t, 2> timestamp(regions[1], TIMESTAMP);
+    Legion::FieldAccessor<WRITE_DISCARD, time_t, 2> timestamp(regions[1],
+                                                              TIMESTAMP);
     timestamp[msg_id] = data->message.timestamp;
-    FieldAccessor<WRITE_DISCARD, MessageText, 2> text(regions[1], TEXT);
+    Legion::FieldAccessor<WRITE_DISCARD, MessageText, 2> text(regions[1],
+                                                              TEXT);
     text[msg_id] = data->message.text;
     next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
     unsigned long long end = __rdtsc();
@@ -654,46 +668,55 @@ ExecutePostResponse execute_post_task(
 }
 
 int main(int argc, char **argv) {
-    Runtime::set_top_level_task_id(DISPATCH_TASK);
+    Legion::Runtime::set_top_level_task_id(DISPATCH_TASK);
 
     {
-        TaskVariantRegistrar registrar(DISPATCH_TASK, "dispatch");
-        registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
-        Runtime::preregister_task_variant<dispatch_task>(registrar,
-                                                         "dispatch");
+        Legion::TaskVariantRegistrar registrar(DISPATCH_TASK, "dispatch");
+        registrar.add_constraint(
+            Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<dispatch_task>(registrar,
+                                                                 "dispatch");
     }
 
     {
-        TaskVariantRegistrar registrar(PREPARE_FETCH_TASK, "prepare_fetch");
-        registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
-        Runtime::preregister_task_variant<PrepareFetchResponse,
-                                          prepare_fetch_task>(registrar,
-                                                              "prepare_fetch");
+        Legion::TaskVariantRegistrar registrar(PREPARE_FETCH_TASK,
+                                               "prepare_fetch");
+        registrar.add_constraint(
+            Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<PrepareFetchResponse,
+                                                  prepare_fetch_task>(
+            registrar, "prepare_fetch");
     }
 
     {
-        TaskVariantRegistrar registrar(EXECUTE_FETCH_TASK, "execute_fetch");
-        registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
-        Runtime::preregister_task_variant<ExecuteFetchResponse,
-                                          execute_fetch_task>(registrar,
-                                                              "execute_fetch");
+        Legion::TaskVariantRegistrar registrar(EXECUTE_FETCH_TASK,
+                                               "execute_fetch");
+        registrar.add_constraint(
+            Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<ExecuteFetchResponse,
+                                                  execute_fetch_task>(
+            registrar, "execute_fetch");
     }
 
     {
-        TaskVariantRegistrar registrar(PREPARE_POST_TASK, "prepare_post");
-        registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
-        Runtime::preregister_task_variant<PreparePostResponse,
-                                          prepare_post_task>(registrar,
-                                                             "prepare_post");
+        Legion::TaskVariantRegistrar registrar(PREPARE_POST_TASK,
+                                               "prepare_post");
+        registrar.add_constraint(
+            Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<PreparePostResponse,
+                                                  prepare_post_task>(
+            registrar, "prepare_post");
     }
 
     {
-        TaskVariantRegistrar registrar(EXECUTE_POST_TASK, "execute_post");
-        registrar.add_constraint(ProcessorConstraint(Processor::LOC_PROC));
-        Runtime::preregister_task_variant<ExecutePostResponse,
-                                          execute_post_task>(registrar,
-                                                             "execute_post");
+        Legion::TaskVariantRegistrar registrar(EXECUTE_POST_TASK,
+                                               "execute_post");
+        registrar.add_constraint(
+            Legion::ProcessorConstraint(Legion::Processor::LOC_PROC));
+        Legion::Runtime::preregister_task_variant<ExecutePostResponse,
+                                                  execute_post_task>(
+            registrar, "execute_post");
     }
 
-    return Runtime::start(argc, argv);
+    return Legion::Runtime::start(argc, argv);
 }

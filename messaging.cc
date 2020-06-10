@@ -600,7 +600,7 @@ ExecuteFetchResponse execute_fetch_task(
         }
     }
     ExecuteFetchResponse response = {.success = true};
-    unsigned long long index = 0;
+    unsigned long long index = 1;
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
         message_id_t max_msg_id =
             std::min(data->next_channel_msg_ids[i],

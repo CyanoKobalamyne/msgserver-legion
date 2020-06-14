@@ -425,7 +425,7 @@ void dispatch_task(const Legion::Task *task,
                         .message = msg};
                     Legion::TaskLauncher launcher(
                         EXECUTE_POST_TASK,
-                        Legion::TaskArgument(&data, sizeof(PrepareFetchData)));
+                        Legion::TaskArgument(&data, sizeof(ExecutePostData)));
                     launcher.add_region_requirement(Legion::RegionRequirement(
                         runtime->get_logical_subregion_by_color(
                             channel_partition, req.request.channel_id),

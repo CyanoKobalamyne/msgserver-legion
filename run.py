@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-import os
 import os.path
+import subprocess
 
 ITERATIONS = 30
 
@@ -23,17 +23,38 @@ for n in USERS:
             print("requests ratio  " + " ".join(f"{c:4d}" for c in CPUS))
             for t in REQUESTS:
                 for r in RATIOS:
-                    print(f"{t:{len('requests')}d} {r:{len('ratio')}d}  ",
-                          end="")
-                    results = []
+                    print(f"{t:{len('requests')}d} {r:{len('ratio')}d}  ", end="")
                     for cpu in CPUS:
                         times = []
                         for _ in range(ITERATIONS):
-                            stream = os.popen(
-                                f"{os.path.join(os.getcwd(),'messaging')} "
-                                f"-n {n} -k {k} -m {m} -t {t} -r {r} "
-                                f"-ll:cpu {cpu} -level 5")
-                            times.append(int(stream.readline().strip()))
-                        results.append(sum(times) / len(times))
-                    print(" ".join(f"{r/1e6:4.0f}" for r in results))
-            print("\n")
+                            prog = subprocess.run(
+                                [
+                                    os.path.join(os.getcwd(), "messaging"),
+                                    "-n",
+                                    str(n),
+                                    "-k",
+                                    str(k),
+                                    "-m",
+                                    str(m),
+                                    "-t",
+                                    str(t),
+                                    "-r",
+                                    str(r),
+                                    "-ll:cpu",
+                                    str(cpu),
+                                    "-level",
+                                    "5",
+                                ],
+                                bufsize=0,
+                                capture_output=True,
+                                text=True,
+                            )
+                            if prog.returncode != 0:
+                                continue
+                            time = prog.stdout.splitlines()[0].split()[1]
+                            times.append(int(time))
+                        if not times:
+                            print(" " * 5, end="")
+                            continue
+                        print(f"{sum(times) / len(times) / 1e6 : 4.0f} ", end="")
+                    print()

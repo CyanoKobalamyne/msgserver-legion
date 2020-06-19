@@ -643,7 +643,7 @@ ExecutePostResponse execute_post_task(
         next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
     }
     unsigned long long end = __rdtsc();
-    std::cerr << "[FETCH EXECUTE] took " << end - start << ", channel "
+    std::cerr << "[POST EXECUTE] took " << end - start << ", channel "
               << (int)data->channel_id << (response.success ? "," : ", failed")
               << std::endl;
     return response;

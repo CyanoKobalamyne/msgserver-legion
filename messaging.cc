@@ -101,7 +101,6 @@ struct PrepareFetchData {
 struct PrepareFetchResponse {
     PerUserChannel<message_id_t> next_unread_msg_ids;
     PerUserChannel<message_id_t> next_channel_msg_ids;
-    unsigned long long cycles;
 };
 
 struct ExecuteFetchData {
@@ -115,7 +114,6 @@ struct ExecuteFetchResponse {
     bool success;
     message_id_t num_messages;
     MessageList messages;
-    unsigned long long cycles;
 };
 
 struct PreparePostData {
@@ -124,7 +122,6 @@ struct PreparePostData {
 
 struct PreparePostResponse {
     message_id_t next_channel_msg_id;
-    unsigned long long cycles;
 };
 
 struct ExecutePostData {
@@ -135,7 +132,6 @@ struct ExecutePostData {
 
 struct ExecutePostResponse {
     bool success;
-    unsigned long long cycles;
 };
 
 enum Action {
@@ -203,7 +199,7 @@ void dispatch_task(const Legion::Task *task,
     // Check that (nonzero) arguments are given.
     if (user_count == 0 || channel_count == 0 || msg_count == 0 ||
         n_requests == 0 || request_ratio == 0) {
-        std::cout << "Usage: " << args.argv[0]
+        std::cerr << "Usage: " << args.argv[0]
                   << " [-n num_users] [-k num_channels] [-m num_messages] [-t "
                      "test_requests] [-r test_request_ratio]"
                   << std::endl;
@@ -212,7 +208,7 @@ void dispatch_task(const Legion::Task *task,
 
     // Check that we have enough channels to choose from.
     if (channel_count < CHANNELS_PER_USER) {
-        std::cout << "You must specify at least " << CHANNELS_PER_USER
+        std::cerr << "You must specify at least " << CHANNELS_PER_USER
                   << " channels" << std::endl;
         exit(EXIT_FAILURE);
     }
@@ -222,7 +218,7 @@ void dispatch_task(const Legion::Task *task,
 
     // Check that we will have at lest one request.
     if (n_post_requests == 0) {
-        std::cout
+        std::cerr
             << "The number of requests is too low for the chosen ratio.\n"
             << "Please increase the number of requests or decrease the ratio."
             << std::endl;
@@ -350,10 +346,6 @@ void dispatch_task(const Legion::Task *task,
     std::shuffle(requests.begin(), requests.end(), rng);
 
     /* Statistics. */
-    std::vector<unsigned long long> prepare_fetch_cycles;
-    std::vector<unsigned long long> prepare_post_cycles;
-    std::vector<unsigned long long> execute_fetch_cycles;
-    std::vector<unsigned long long> execute_post_cycles;
     unsigned long n_failed_fetch = 0;
     unsigned long n_failed_post = 0;
 
@@ -406,7 +398,6 @@ void dispatch_task(const Legion::Task *task,
                     executing_reqs.push_back(
                         {.future = runtime->execute_task(ctx, launcher),
                          .request = req.request});
-                    prepare_fetch_cycles.push_back(response.cycles);
                     break;
                 }
                 case POST: {
@@ -443,7 +434,6 @@ void dispatch_task(const Legion::Task *task,
                     executing_reqs.push_back(
                         {.future = runtime->execute_task(ctx, launcher),
                          .request = req.request});
-                    prepare_post_cycles.push_back(response.cycles);
                     break;
                 }
                 }
@@ -508,9 +498,7 @@ void dispatch_task(const Legion::Task *task,
         switch (req.request.action) {
         case FETCH: {
             auto response = req.future.get_result<ExecuteFetchResponse>();
-            if (response.success) {
-                execute_fetch_cycles.push_back(response.cycles);
-            } else {
+            if (!response.success) {
                 n_failed_fetch++;
             }
             break;
@@ -518,9 +506,7 @@ void dispatch_task(const Legion::Task *task,
 
         case POST: {
             auto response = req.future.get_result<ExecutePostResponse>();
-            if (response.success) {
-                execute_post_cycles.push_back(response.cycles);
-            } else {
+            if (!response.success) {
                 n_failed_post++;
             }
             break;
@@ -532,32 +518,12 @@ void dispatch_task(const Legion::Task *task,
 
     auto duration =
         std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
-    std::cout << duration.count() << std::endl;
+    std::cout << "Time: " << duration.count() << " ns" << std::endl;
 
-    double avg_prepare_fetch_cycles = 0;
-    for (auto c : prepare_fetch_cycles) {
-        avg_prepare_fetch_cycles += (double)c / prepare_fetch_cycles.size();
-    }
-    std::cout << "Prepare fetch: " << avg_prepare_fetch_cycles
-              << " cycles avg." << std::endl;
-    double avg_execute_fetch_cycles = 0;
-    for (auto c : execute_fetch_cycles) {
-        avg_execute_fetch_cycles += (double)c / execute_fetch_cycles.size();
-    }
-    std::cout << "Execute fetch: " << avg_execute_fetch_cycles
-              << " cycles avg. (failed " << n_failed_fetch << ")" << std::endl;
-    double avg_prepare_post_cycles = 0;
-    for (auto c : prepare_post_cycles) {
-        avg_prepare_post_cycles += (double)c / prepare_post_cycles.size();
-    }
-    std::cout << "Prepare post: " << avg_prepare_post_cycles << " cycles avg."
-              << std::endl;
-    double avg_execute_post_cycles = 0;
-    for (auto c : execute_post_cycles) {
-        avg_execute_post_cycles += (double)c / execute_post_cycles.size();
-    }
-    std::cout << "Execute post: " << avg_execute_post_cycles
-              << " cycles avg. (failed " << n_failed_post << ")" << std::endl;
+    std::cout << "Fetch: " << n_failed_fetch << " out of " << n_fetch_requests
+              << " failed" << std::endl;
+    std::cout << "Post: " << n_failed_post << " out of " << n_post_requests
+              << " failed" << std::endl;
 
     return;
 }
@@ -581,7 +547,8 @@ PrepareFetchResponse prepare_fetch_task(
             next_msg[data->watched_channel_ids[i]];
     }
     unsigned long long end = __rdtsc();
-    response.cycles = end - start;
+    std::cerr << "[FETCH PREPARE] took " << end - start << ", user "
+              << data->user_id << std::endl;
     return response;
 }
 
@@ -590,40 +557,46 @@ ExecuteFetchResponse execute_fetch_task(
     const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
     Legion::Runtime *runtime) {
     unsigned long long start = __rdtsc();
+    ExecuteFetchResponse response;
+    response.success = true;
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
     const Legion::FieldAccessor<READ_WRITE, PerUserChannel<message_id_t>, 1>
         next_unread(regions[0], NEXT_UNREAD_MSG_IDS);
     PerUserChannel<message_id_t> user_next_unread = next_unread[data->user_id];
     for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
         if (data->next_unread_msg_ids[i] != user_next_unread[i]) {
-            return {.success = false};
+            response.success = false;
+            break;
         }
     }
-    ExecuteFetchResponse response = {.success = true};
-    unsigned long long index = 1;
-    for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
-        message_id_t max_msg_id =
-            std::min(data->next_channel_msg_ids[i],
-                     data->next_unread_msg_ids[i] + MAX_RETURNED_MESSAGES);
-        for (message_id_t j = data->next_unread_msg_ids[i]; j < max_msg_id;
-             j++, index++) {
-            Legion::FieldAccessor<READ_ONLY, user_id_t, 1> author(
-                regions[index], AUTHOR_ID);
-            Legion::FieldAccessor<READ_ONLY, time_t, 1> timestamp(
-                regions[index], TIMESTAMP);
-            Legion::FieldAccessor<READ_ONLY, MessageText, 1> text(
-                regions[index], TEXT);
-            response.messages[index] = {.message_id = j,
-                                        .author_id = author[j],
-                                        .timestamp = timestamp[j],
-                                        .text = text[j]};
+    if (response.success) {
+        unsigned long long index = 1;
+        for (unsigned int i = 0; i < CHANNELS_PER_USER; i++) {
+            message_id_t max_msg_id =
+                std::min(data->next_channel_msg_ids[i],
+                         data->next_unread_msg_ids[i] + MAX_RETURNED_MESSAGES);
+            for (message_id_t j = data->next_unread_msg_ids[i]; j < max_msg_id;
+                 j++, index++) {
+                Legion::FieldAccessor<READ_ONLY, user_id_t, 1> author(
+                    regions[index], AUTHOR_ID);
+                Legion::FieldAccessor<READ_ONLY, time_t, 1> timestamp(
+                    regions[index], TIMESTAMP);
+                Legion::FieldAccessor<READ_ONLY, MessageText, 1> text(
+                    regions[index], TEXT);
+                response.messages[index] = {.message_id = j,
+                                            .author_id = author[j],
+                                            .timestamp = timestamp[j],
+                                            .text = text[j]};
+            }
+            user_next_unread[i] = max_msg_id;
         }
-        user_next_unread[i] = max_msg_id;
+        next_unread[data->user_id] = user_next_unread;  // Overwrite values.
+        response.num_messages = index;
     }
-    next_unread[data->user_id] = user_next_unread;  // Overwrite values.
-    response.num_messages = index;
     unsigned long long end = __rdtsc();
-    response.cycles = end - start;
+    std::cerr << "[FETCH EXECUTE] took " << end - start << ", user "
+              << data->user_id << (response.success ? "," : ", failed")
+              << std::endl;
     return response;
 }
 
@@ -638,7 +611,8 @@ PreparePostResponse prepare_post_task(
                                                                NEXT_MSG_ID);
     response.next_channel_msg_id = next_msg[data->channel_id];
     unsigned long long end = __rdtsc();
-    response.cycles = end - start;
+    std::cerr << "[POST PREPARE] took " << end - start << ", channel "
+              << (int)data->channel_id << std::endl;
     return response;
 }
 
@@ -647,25 +621,32 @@ ExecutePostResponse execute_post_task(
     const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
     Legion::Runtime *runtime) {
     unsigned long long start = __rdtsc();
+    ExecutePostResponse response;
+    response.success = true;
     ExecutePostData *data = (ExecutePostData *)task->args;
     Legion::FieldAccessor<READ_WRITE, message_id_t, 1> next_msg(regions[0],
                                                                 NEXT_MSG_ID);
     if (next_msg[data->channel_id] != data->next_channel_msg_id) {
-        return {.success = false};
+        response.success = false;
     }
-    Legion::Point<2> msg_id(data->channel_id, data->next_channel_msg_id);
-    Legion::FieldAccessor<WRITE_DISCARD, user_id_t, 2> author(regions[1],
-                                                              AUTHOR_ID);
-    author[msg_id] = data->message.author_id;
-    Legion::FieldAccessor<WRITE_DISCARD, time_t, 2> timestamp(regions[1],
-                                                              TIMESTAMP);
-    timestamp[msg_id] = data->message.timestamp;
-    Legion::FieldAccessor<WRITE_DISCARD, MessageText, 2> text(regions[1],
-                                                              TEXT);
-    text[msg_id] = data->message.text;
-    next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
+    if (response.success) {
+        Legion::Point<2> msg_id(data->channel_id, data->next_channel_msg_id);
+        Legion::FieldAccessor<WRITE_DISCARD, user_id_t, 2> author(regions[1],
+                                                                  AUTHOR_ID);
+        author[msg_id] = data->message.author_id;
+        Legion::FieldAccessor<WRITE_DISCARD, time_t, 2> timestamp(regions[1],
+                                                                  TIMESTAMP);
+        timestamp[msg_id] = data->message.timestamp;
+        Legion::FieldAccessor<WRITE_DISCARD, MessageText, 2> text(regions[1],
+                                                                  TEXT);
+        text[msg_id] = data->message.text;
+        next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
+    }
     unsigned long long end = __rdtsc();
-    return {.success = true, .cycles = end - start};
+    std::cerr << "[FETCH EXECUTE] took " << end - start << ", channel "
+              << (int)data->channel_id << (response.success ? "," : ", failed")
+              << std::endl;
+    return response;
 }
 
 int main(int argc, char **argv) {

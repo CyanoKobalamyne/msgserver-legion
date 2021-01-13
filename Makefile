@@ -3,18 +3,21 @@ ifndef LG_RT_DIR
 $(error LG_RT_DIR variable is not defined, aborting build)
 endif
 
-# Set flags for Legion.
-DEBUG           ?= 0			# Include debugging symbols
-MAX_DIM         ?= 3			# Maximum number of dimensions
-OUTPUT_LEVEL    ?= LEVEL_INFO		# Compile time logging level
+# Don't include debugging symbols by default.
+DEBUG           ?= 0
+# Set maximum number of dimensions.
+MAX_DIM         ?= 3
+# Set default logging level.
+OUTPUT_LEVEL    ?= LEVEL_INFO
 
 # Compute file names.
 OUTFILE		?= messaging
 GEN_SRC		?= $(OUTFILE).cc
 
-# Set compilation flags
-CC_FLAGS	+=	-std=c++17						# Use C++17 standard for better template type deduction.
-CC_FLAGS	+=	-DLEGION_MAX_RETURN_SIZE=8192	# Increase maximum return size from 2048.
+# Use C++17 standard for better template type deduction.
+CC_FLAGS	+= -std=c++17
+# Increase maximum return size from 2048.
+CC_FLAGS	+= -DLEGION_MAX_RETURN_SIZE=8192
 
 # Include Legion's Makefile
 include $(LG_RT_DIR)/runtime.mk

@@ -595,7 +595,7 @@ ExecuteFetchResponse execute_fetch_task(
     }
     unsigned long long end = __rdtsc();
     std::cerr << "[FETCH EXECUTE] took " << end - start << ", user "
-              << data->user_id << (response.success ? "," : ", failed")
+              << data->user_id << (response.success ? "" : ", failed")
               << std::endl;
     return response;
 }
@@ -644,7 +644,7 @@ ExecutePostResponse execute_post_task(
     }
     unsigned long long end = __rdtsc();
     std::cerr << "[POST EXECUTE] took " << end - start << ", channel "
-              << (int)data->channel_id << (response.success ? "," : ", failed")
+              << (int)data->channel_id << (response.success ? "" : ", failed")
               << std::endl;
     return response;
 }

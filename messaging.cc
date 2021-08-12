@@ -36,7 +36,7 @@ enum MessageFieldID {
     TEXT,
 };
 
-constexpr unsigned int CHANNELS_PER_USER = 5;
+constexpr unsigned int CHANNELS_PER_USER = 4;
 constexpr unsigned int MESSAGE_LENGTH = 256;
 constexpr unsigned int MAX_RETURNED_MESSAGES = 20;
 constexpr char msg_template[] = "This is a message from user %d on channel %d";

@@ -3,6 +3,7 @@
 #include <ctime>
 #include <deque>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <list>
 #include <numeric>
@@ -11,7 +12,6 @@
 
 #include "getopt.h"
 #include "legion.h"
-#include "x86intrin.h"
 
 enum TaskID {
     INIT_TASK,
@@ -159,6 +159,12 @@ const struct option options[] = {
     {.name = "r", .has_arg = required_argument, .flag = NULL, .val = 'r'},
     {0, 0, 0, 0},
 };
+
+unsigned long long fetch_time;
+unsigned long long fetch_count;
+unsigned long long fetch_message_count;
+unsigned long long post_time;
+unsigned long long post_count;
 
 void dispatch_task(const Legion::Task *task,
                    const std::vector<Legion::PhysicalRegion> &regions,
@@ -520,10 +526,13 @@ void dispatch_task(const Legion::Task *task,
         std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
     std::cout << "Time: " << duration.count() << " ns" << std::endl;
 
-    std::cout << "Fetch: " << n_failed_fetch << " out of " << n_fetch_requests
-              << " failed" << std::endl;
-    std::cout << "Post: " << n_failed_post << " out of " << n_post_requests
-              << " failed" << std::endl;
+    std::cout << std::fixed << std::setprecision(0);
+    std::cout << "Fetch: " << fetch_time / fetch_count << " ns average, "
+              << n_failed_fetch << "/" << n_fetch_requests << " failed, "
+              << fetch_message_count << " messages" << std::endl;
+    std::cout << "Post: " << post_time / post_count << " ns average, "
+              << n_failed_post << "/" << n_post_requests << " failed"
+              << std::endl;
 
     return;
 }
@@ -532,7 +541,7 @@ PrepareFetchResponse prepare_fetch_task(
     const Legion::Task *task,
     const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
     Legion::Runtime *runtime) {
-    unsigned long long start = __rdtsc();
+    auto start = std::chrono::high_resolution_clock::now();
     PrepareFetchData *data = (PrepareFetchData *)task->args;
     PrepareFetchResponse response;
     const Legion::FieldAccessor<READ_ONLY, PerUserChannel<message_id_t>, 1>
@@ -546,9 +555,13 @@ PrepareFetchResponse prepare_fetch_task(
         response.next_channel_msg_ids[i] =
             next_msg[data->watched_channel_ids[i]];
     }
-    unsigned long long end = __rdtsc();
-    std::cerr << "[FETCH PREPARE] took " << end - start << ", user "
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    std::cerr << "[FETCH PREPARE] took " << duration.count() << " ns, user "
               << data->user_id << std::endl;
+    fetch_time += duration.count();
+    fetch_count++;
     return response;
 }
 
@@ -556,7 +569,7 @@ ExecuteFetchResponse execute_fetch_task(
     const Legion::Task *task,
     const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
     Legion::Runtime *runtime) {
-    unsigned long long start = __rdtsc();
+    auto start = std::chrono::high_resolution_clock::now();
     ExecuteFetchResponse response;
     response.success = true;
     ExecuteFetchData *data = (ExecuteFetchData *)task->args;
@@ -593,10 +606,14 @@ ExecuteFetchResponse execute_fetch_task(
         next_unread[data->user_id] = user_next_unread;  // Overwrite values.
         response.num_messages = index;
     }
-    unsigned long long end = __rdtsc();
-    std::cerr << "[FETCH EXECUTE] took " << end - start << ", user "
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    std::cerr << "[FETCH EXECUTE] took " << duration.count() << " ns, user "
               << data->user_id << (response.success ? "" : ", failed")
               << std::endl;
+    fetch_time += duration.count();
+    fetch_message_count += response.num_messages;
     return response;
 }
 
@@ -604,15 +621,19 @@ PreparePostResponse prepare_post_task(
     const Legion::Task *task,
     const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
     Legion::Runtime *runtime) {
-    unsigned long long start = __rdtsc();
+    auto start = std::chrono::high_resolution_clock::now();
     PreparePostData *data = (PreparePostData *)task->args;
     PreparePostResponse response;
     Legion::FieldAccessor<READ_ONLY, message_id_t, 1> next_msg(regions[0],
                                                                NEXT_MSG_ID);
     response.next_channel_msg_id = next_msg[data->channel_id];
-    unsigned long long end = __rdtsc();
-    std::cerr << "[POST PREPARE] took " << end - start << ", channel "
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    std::cerr << "[POST PREPARE] took " << duration.count() << " ns, channel "
               << (int)data->channel_id << std::endl;
+    post_time += duration.count();
+    post_count++;
     return response;
 }
 
@@ -620,7 +641,7 @@ ExecutePostResponse execute_post_task(
     const Legion::Task *task,
     const std::vector<Legion::PhysicalRegion> &regions, Legion::Context ctx,
     Legion::Runtime *runtime) {
-    unsigned long long start = __rdtsc();
+    auto start = std::chrono::high_resolution_clock::now();
     ExecutePostResponse response;
     response.success = true;
     ExecutePostData *data = (ExecutePostData *)task->args;
@@ -642,10 +663,13 @@ ExecutePostResponse execute_post_task(
         text[msg_id] = data->message.text;
         next_msg[data->channel_id] = next_msg[data->channel_id] + 1;
     }
-    unsigned long long end = __rdtsc();
-    std::cerr << "[POST EXECUTE] took " << end - start << ", channel "
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+    std::cerr << "[POST EXECUTE] took " << duration.count() << ", channel "
               << (int)data->channel_id << (response.success ? "" : ", failed")
               << std::endl;
+    post_time += duration.count();
     return response;
 }
 
